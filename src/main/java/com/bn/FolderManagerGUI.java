@@ -2,6 +2,11 @@ package com.bn;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Desktop;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -24,9 +29,14 @@ import javax.swing.JTable;
 import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumnModel;
 
 public class FolderManagerGUI {
-    private JFrame frame;
+    private static final String FOLDER_PATH = "Folder Path";
+	private static final String OPEN_IN_TERMINAL = "Open in Terminal";
+	private static final String DELETE = "Delete";
+	public static final String OPEN = "Open";
+	private JFrame frame;
     private JTable table;
     private DefaultTableModel tableModel;
     private static final String SAVE_FILE = "folders.txt";
@@ -36,7 +46,9 @@ public class FolderManagerGUI {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(600, 400);
 
-        String[] columnNames = {"Folder Path", "Open", "Delete"};
+//        String[] columnNames = {"Folder Path", "Open", "Delete"};
+        String[] columnNames = {FOLDER_PATH, OPEN, DELETE, OPEN_IN_TERMINAL};
+
         tableModel = new DefaultTableModel(columnNames, 0);
         table = new JTable(tableModel);
 //        table.getColumn("Open").setCellRenderer(new ButtonRenderer());
@@ -44,10 +56,30 @@ public class FolderManagerGUI {
 //        table.getColumn("Delete").setCellRenderer(new ButtonRenderer());
 //        table.getColumn("Delete").setCellEditor(new ButtonEditor(new JCheckBox(), "Delete"));
         table.getColumnModel().getColumn(1).setCellRenderer(new ButtonRenderer());
-        table.getColumnModel().getColumn(1).setCellEditor(new ButtonEditor(new JCheckBox(), "Open"));
+        table.getColumnModel().getColumn(1).setCellEditor(new ButtonEditor(new JCheckBox(), OPEN));
         table.getColumnModel().getColumn(2).setCellRenderer(new ButtonRenderer());
-        table.getColumnModel().getColumn(2).setCellEditor(new ButtonEditor(new JCheckBox(), "Delete"));
+        table.getColumnModel().getColumn(2).setCellEditor(new ButtonEditor(new JCheckBox(), DELETE));
+        table.getColumnModel().getColumn(3).setCellRenderer(new ButtonRenderer());
+        table.getColumnModel().getColumn(3).setCellEditor(new ButtonEditor(new JCheckBox(), OPEN_IN_TERMINAL));
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                int col = table.columnAtPoint(e.getPoint());
 
+                // Ensure the click is on the "Folder Path" column (first column)
+                if (row != -1 && col == 0) {
+                    String path = (String) table.getValueAt(row, col);
+                    StringSelection selection = new StringSelection(path);
+                    Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+                    clipboard.setContents(selection, null);
+                    JOptionPane.showMessageDialog(null, "Path copied to clipboard: " + path);
+                }
+            }
+        });
+
+
+        setColumnSize();
 
         JScrollPane scrollPane = new JScrollPane(table);
 
@@ -69,13 +101,33 @@ public class FolderManagerGUI {
         frame.setVisible(true);
     }
 
-    private void addFolder() {
+    private void setColumnSize() {
+    	// Get the table column model
+    	TableColumnModel columnModel = table.getColumnModel();
+
+    	// Set fixed widths for button columns
+    	columnModel.getColumn(1).setMinWidth(80);  // Open Button
+    	columnModel.getColumn(1).setMaxWidth(80);
+
+    	columnModel.getColumn(2).setMinWidth(80);  // Delete Button
+    	columnModel.getColumn(2).setMaxWidth(80);
+
+    	columnModel.getColumn(3).setMinWidth(120); // Open in Terminal Button
+    	columnModel.getColumn(3).setMaxWidth(120);
+
+    	// Let the Folder Path column take up the remaining space
+    	columnModel.getColumn(0).setResizable(true);
+
+
+	}
+
+	private void addFolder() {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         int option = fileChooser.showOpenDialog(frame);
         if (option == JFileChooser.APPROVE_OPTION) {
             File selectedFolder = fileChooser.getSelectedFile();
-            tableModel.addRow(new Object[]{selectedFolder.getAbsolutePath(), "Open", "Delete"});
+            tableModel.addRow(new Object[]{selectedFolder.getAbsolutePath(), OPEN, DELETE,OPEN_IN_TERMINAL});
         }
     }
 
@@ -96,7 +148,7 @@ public class FolderManagerGUI {
             String line;
             tableModel.setRowCount(0);
             while ((line = reader.readLine()) != null) {
-                tableModel.addRow(new Object[]{line, "Open", "Delete"});
+                tableModel.addRow(new Object[]{line, OPEN, DELETE, OPEN_IN_TERMINAL});
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -120,37 +172,74 @@ public class FolderManagerGUI {
         }
     }
 
-
     class ButtonEditor extends DefaultCellEditor {
-        /**
-		 * 
-		 */
-		private static final long serialVersionUID = -7149504244351907909L;
+        private static final long serialVersionUID = 1L;
 		private JButton button;
-        private String action;
+        private String label;
+        private boolean isPushed;
+        private JTable table;
         private int row;
 
-        public ButtonEditor(JCheckBox checkBox, String action) {
+        public ButtonEditor(JCheckBox checkBox, String label) {
             super(checkBox);
-            this.action = action;
-            button = new JButton(action);
+            button = new JButton(label);
             button.setOpaque(true);
-            button.addActionListener(e -> performAction());
+            button.addActionListener(e -> {
+                fireEditingStopped();
+                String folderPath = (String) table.getValueAt(row, 0);
+                if (label.equals(OPEN)) {
+                    openFolder(folderPath);
+                } else if (label.equals(DELETE)) {
+                    deleteFolder(folderPath);
+                } else if (label.equals(OPEN_IN_TERMINAL)) {
+                    openTerminal(folderPath);
+                }
+            });
         }
 
-        @Override
         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+            this.table = table;
             this.row = row;
-            button.setText(action);
+            this.label = (value == null) ? "" : value.toString();
+            button.setText(label);
+            isPushed = true;
             return button;
         }
 
-        private void performAction() {
-            String folderPath = tableModel.getValueAt(row, 0).toString();
-            if (action.equals("Open")) {
-                openFolder(folderPath);
-            } else if (action.equals("Delete")) {
-                deleteFolder(folderPath);
+        public Object getCellEditorValue() {
+            isPushed = false;
+            return label;
+        }
+        private void openTerminal(String folderPath) {
+            try {
+                String os = System.getProperty("os.name").toLowerCase();
+
+                if (os.contains("win")) {
+                    // Windows: Open Command Prompt in the folder
+                    new ProcessBuilder("cmd.exe", "/c", "start", "cmd", "/k", "cd /d " + folderPath).start();
+                } else if (os.contains("mac")) {
+                    // macOS: Open Terminal.app in the folder
+                    new ProcessBuilder("open", "-a", "Terminal", folderPath).start();
+                } else {
+                    // Linux: Try common terminal emulators
+                    String[] terminals = {"gnome-terminal", "konsole", "x-terminal-emulator"};
+                    boolean terminalOpened = false;
+
+                    for (String terminal : terminals) {
+                        try {
+                            new ProcessBuilder(terminal, "--working-directory=" + folderPath).start();
+                            terminalOpened = true;
+                            break;
+                        } catch (Exception ignored) {
+                        }
+                    }
+
+                    if (!terminalOpened) {
+                        JOptionPane.showMessageDialog(null, "No compatible terminal found.");
+                    }
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(null, "Error opening terminal: " + ex.getMessage());
             }
         }
     }
