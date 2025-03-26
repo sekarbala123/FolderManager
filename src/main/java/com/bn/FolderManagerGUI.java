@@ -227,7 +227,7 @@ public class FolderManagerGUI {
     private void saveFolderList() {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(SAVE_FILE))) {
             for (int i = 0; i < tableModel.getRowCount(); i++) {
-                writer.write(tableModel.getValueAt(i, 0).toString());
+                writer.write(tableModel.getValueAt(i, 1).toString());
                 writer.newLine();
             }
             JOptionPane.showMessageDialog(frame, "Folder list saved successfully.");
